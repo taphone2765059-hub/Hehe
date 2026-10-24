@@ -1,0 +1,298 @@
+-- MM2 ESP + ยิงทะลุกำแพง | Murder Mystery 2 | Delta Executor
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local localPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local ตั้งค่า = {
+    ESP = true,
+    ยิงทะลุ = true,
+}
+
+-- ========== ESP ==========
+local function สร้างESP(player)
+    local บิล = {}
+
+    local ชื่อ = Drawing.new("Text")
+    ชื่อ.Size = 14
+    ชื่อ.Center = true
+    ชื่อ.Outline = true
+    ชื่อ.Visible = false
+    บิล.ชื่อ = ชื่อ
+
+    local กล่อง = Drawing.new("Square")
+    กล่อง.Thickness = 2
+    กล่อง.Filled = false
+    กล่อง.Visible = false
+    บิล.กล่อง = กล่อง
+
+    local เส้น = Drawing.new("Line")
+    เส้น.Thickness = 1
+    เส้น.Visible = false
+    บิล.เส้น = เส้น
+
+    return บิล
+end
+
+local function ลบESP(บิล)
+    for _, v in pairs(บิล) do
+        v:Remove()
+    end
+end
+
+local function getRole(player)
+    local char = player.Character
+    if not char then return "ตาย" end
+    local function checkTools(container)
+        if not container then return nil end
+        for _, item in ipairs(container:GetChildren()) do
+            local name = item.Name:lower()
+            if name:find("knife") or name:find("kunai") then return "Murderer" end
+            if name:find("gun") or name:find("sheriff") then return "Sheriff" end
+        end
+        return nil
+    end
+    return checkTools(char) or checkTools(player:FindFirstChild("Backpack")) or "Innocent"
+end
+
+local สีRole = {
+    Murderer = Color3.fromRGB(255, 50, 50),
+    Sheriff = Color3.fromRGB(50, 150, 255),
+    Innocent = Color3.fromRGB(200, 200, 200),
+    ตาย = Color3.fromRGB(80, 80, 80),
+}
+
+local ESPList = {}
+
+local function updateESP()
+    for player, บิล in pairs(ESPList) do
+        if not player or not player.Parent then
+            ลบESP(บิล)
+            ESPList[player] = nil
+            continue
+        end
+
+        local char = player.Character
+        if not char or player == localPlayer then
+            บิล.ชื่อ.Visible = false
+            บิล.กล่อง.Visible = false
+            บิล.เส้น.Visible = false
+            continue
+        end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChild("Humanoid")
+        if not hrp or not hum then continue end
+
+        local pos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+        local role = getRole(player)
+        local สี = สีRole[role]
+
+        if onScreen and ตั้งค่า.ESP then
+            local scale = 1 / pos.Z * 100
+            local w = scale * 2
+            local h = scale * 3
+
+            บิล.กล่อง.Position = Vector2.new(pos.X - w/2, pos.Y - h/2)
+            บิล.กล่อง.Size = Vector2.new(w, h)
+            บิล.กล่อง.Color = สี
+            บิล.กล่อง.Visible = true
+
+            บิล.ชื่อ.Position = Vector2.new(pos.X, pos.Y - h/2 - 16)
+            บิล.ชื่อ.Text = player.Name .. " [" .. role .. "]"
+            บิล.ชื่อ.Color = สี
+            บิล.ชื่อ.Visible = true
+
+            local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y)
+            บิล.เส้น.From = center
+            บิล.เส้น.To = Vector2.new(pos.X, pos.Y)
+            บิล.เส้น.Color = สี
+            บิล.เส้น.Visible = role == "Murderer"
+        else
+            บิล.ชื่อ.Visible = false
+            บิล.กล่อง.Visible = false
+            บิล.เส้น.Visible = false
+        end
+    end
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    if p ~= localPlayer then
+        ESPList[p] = สร้างESP(p)
+    end
+end
+
+Players.PlayerAdded:Connect(function(p)
+    ESPList[p] = สร้างESP(p)
+end)
+
+Players.PlayerRemoving:Connect(function(p)
+    if ESPList[p] then
+        ลบESP(ESPList[p])
+        ESPList[p] = nil
+    end
+end)
+
+-- ========== ยิงทะลุกำแพง ==========
+local mt = getrawmetatable(game)
+local old = mt.__namecall
+setreadonly(mt, false)
+
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+
+    if ตั้งค่า.ยิงทะลุ and method == "FireServer" then
+        local name = tostring(self.Name):lower()
+        if name:find("gun") or name:find("shoot") or name:find("sheriff") then
+            -- หา murderer
+            local target = nil
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p == localPlayer then continue end
+                if getRole(p) == "Murderer" and p.Character then
+                    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then target = hrp.Position end
+                end
+            end
+            if target and args[1] then
+                args[1] = target
+            end
+        end
+    end
+
+    return old(self, table.unpack(args))
+end)
+
+setreadonly(mt, true)
+
+-- ========== UI ธีมดำตัดขาวจีน ==========
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MM2UI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = game:GetService("CoreGui")
+
+-- กรอบหลัก
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 230, 0, 220)
+Main.Position = UDim2.new(0, 15, 0, 15)
+Main.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Draggable = true
+Main.Parent = ScreenGui
+
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 4)
+
+local เส้นขอบ = Instance.new("UIStroke", Main)
+เส้นขอบ.Color = Color3.fromRGB(220, 220, 220)
+เส้นขอบ.Thickness = 1
+
+-- หัวข้อ
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 38)
+Title.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Text = "☯  MM2 Script  ☯"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.BorderSizePixel = 0
+Title.Parent = Main
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 4)
+
+local เส้นใต้หัว = Instance.new("Frame")
+เส้นใต้หัว.Size = UDim2.new(1, 0, 0, 1)
+เส้นใต้หัว.Position = UDim2.new(0, 0, 0, 38)
+เส้นใต้หัว.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+เส้นใต้หัว.BorderSizePixel = 0
+เส้นใต้หัว.Parent = Main
+
+-- ปุ่ม ESP
+local btnESP = Instance.new("TextButton")
+btnESP.Size = UDim2.new(1, -20, 0, 38)
+btnESP.Position = UDim2.new(0, 10, 0, 50)
+btnESP.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+btnESP.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnESP.Text = "⬜  ESP : เปิด"
+btnESP.Font = Enum.Font.GothamBold
+btnESP.TextSize = 13
+btnESP.BorderSizePixel = 0
+btnESP.Parent = Main
+Instance.new("UICorner", btnESP).CornerRadius = UDim.new(0, 4)
+local s1 = Instance.new("UIStroke", btnESP)
+s1.Color = Color3.fromRGB(180, 180, 180)
+s1.Thickness = 1
+
+-- ปุ่มยิงทะลุ
+local btnWall = Instance.new("TextButton")
+btnWall.Size = UDim2.new(1, -20, 0, 38)
+btnWall.Position = UDim2.new(0, 10, 0, 98)
+btnWall.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+btnWall.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnWall.Text = "⬜  ยิงทะลุกำแพง : เปิด"
+btnWall.Font = Enum.Font.GothamBold
+btnWall.TextSize = 13
+btnWall.BorderSizePixel = 0
+btnWall.Parent = Main
+Instance.new("UICorner", btnWall).CornerRadius = UDim.new(0, 4)
+local s2 = Instance.new("UIStroke", btnWall)
+s2.Color = Color3.fromRGB(180, 180, 180)
+s2.Thickness = 1
+
+-- status
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1, -20, 0, 25)
+Status.Position = UDim2.new(0, 10, 0, 148)
+Status.BackgroundTransparency = 1
+Status.TextColor3 = Color3.fromRGB(150, 150, 150)
+Status.Text = "Role: กำลังตรวจสอบ..."
+Status.Font = Enum.Font.Gotham
+Status.TextSize = 11
+Status.TextXAlignment = Enum.TextXAlignment.Left
+Status.Parent = Main
+
+-- เส้นคั่น
+local เส้น2 = Instance.new("Frame")
+เส้น2.Size = UDim2.new(1, -20, 0, 1)
+เส้น2.Position = UDim2.new(0, 10, 0, 178)
+เส้น2.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+เส้น2.BorderSizePixel = 0
+เส้น2.Parent = Main
+
+local Credit = Instance.new("TextLabel")
+Credit.Size = UDim2.new(1, 0, 0, 30)
+Credit.Position = UDim2.new(0, 0, 0, 185)
+Credit.BackgroundTransparency = 1
+Credit.TextColor3 = Color3.fromRGB(80, 80, 80)
+Credit.Text = "⚔ MM2 Tool ⚔"
+Credit.Font = Enum.Font.GothamBold
+Credit.TextSize = 11
+Credit.Parent = Main
+
+-- Logic ปุ่ม
+btnESP.MouseButton1Click:Connect(function()
+    ตั้งค่า.ESP = not ตั้งค่า.ESP
+    btnESP.Text = "⬜  ESP : " .. (ตั้งค่า.ESP and "เปิด" or "ปิด")
+    btnESP.TextColor3 = ตั้งค่า.ESP 
+        and Color3.fromRGB(255, 255, 255) 
+        or Color3.fromRGB(100, 100, 100)
+end)
+
+btnWall.MouseButton1Click:Connect(function()
+    ตั้งค่า.ยิงทะลุ = not ตั้งค่า.ยิงทะลุ
+    btnWall.Text = "⬜  ยิงทะลุกำแพง : " .. (ตั้งค่า.ยิงทะลุ and "เปิด" or "ปิด")
+    btnWall.TextColor3 = ตั้งค่า.ยิงทะลุ 
+        and Color3.fromRGB(255, 255, 255) 
+        or Color3.fromRGB(100, 100, 100)
+end)
+
+-- update loop
+RunService.RenderStepped:Connect(function()
+    updateESP()
+    -- อัป role ตัวเอง
+    local myRole = getRole(localPlayer)
+    Status.Text = "Role ของเรา: " .. myRole
+end)
+
+print("โหลดสำเร็จ - MM2 Tool")
